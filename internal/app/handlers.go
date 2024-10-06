@@ -15,7 +15,7 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 
 	reqBody, err := io.ReadAll(r.Body)
 	defer r.Body.Close()
-	if err != nil {
+	if err != nil || len(reqBody) == 0 {
 		fmt.Printf("server: could not read request body: %s\n", err)
 		http.Error(w, "could not read request body", http.StatusInternalServerError)
 		return
@@ -57,5 +57,8 @@ func getHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.Header().Set("location", url)
 		w.WriteHeader(http.StatusTemporaryRedirect)
+		return
 	}
+
+	w.WriteHeader(http.StatusBadRequest)
 }
