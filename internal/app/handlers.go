@@ -1,64 +1,47 @@
 package app
 
 import (
-	"fmt"
 	"io"
 	"net/http"
-	"strings"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func postHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
-	reqBody, err := io.ReadAll(r.Body)
+	url, err := io.ReadAll(r.Body)
 	defer r.Body.Close()
-	if err != nil || len(reqBody) == 0 {
-		fmt.Printf("server: could not read request body: %s\n", err)
-		http.Error(w, "could not read request body", http.StatusInternalServerError)
+
+	if err != nil || len(url) == 0 {
+		http.Error(w, "could not read request body", http.StatusBadRequest)
 		return
 	}
 
-	url := string(reqBody)
-
-	if len(url) > 0 {
-		k, err := shortURLAndStore(url)
-
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(k))
+	k, err := shortURLAndStore(string(url))
+	if err != nil {
+		http.Error(w, "could not store URL", http.StatusInternalServerError)
 		return
 	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte(k))
 }
 
 func getHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-	path := r.URL.Path
+	id := chi.URLParam(r, "id")
 
-	parts := strings.Split(path, "/")
-	if len(parts) > 1 && parts[1] != "" {
-		id := parts[1]
-
-		url, err := getURL(id)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-		}
-
-		w.Header().Set("Content-Type", "text/plain")
-		w.Header().Set("location", url)
-		w.WriteHeader(http.StatusTemporaryRedirect)
+	if id == "" {
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	w.WriteHeader(http.StatusBadRequest)
+	url, err := getURL(id)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Location", url)
+	w.WriteHeader(http.StatusTemporaryRedirect)
 }

@@ -2,13 +2,15 @@ package app
 
 import (
 	"crypto/rand"
-	"encoding/base64"
+	"math/big"
 )
 
 type urlStorage map[string]string
 
 const (
-	urlLength = 9
+	urlLength   = 9
+	charset     = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	charsetSize = int64(len(charset))
 )
 
 var (
@@ -22,13 +24,17 @@ func (m *URLNotExistError) Error() string {
 }
 
 func generateShortedKey() (string, error) {
-	bytes := make([]byte, 8)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
+	shortURL := make([]byte, urlLength)
+
+	for i := range shortURL {
+		num, err := rand.Int(rand.Reader, big.NewInt(charsetSize))
+		if err != nil {
+			return "", err
+		}
+		shortURL[i] = charset[num.Int64()]
 	}
 
-	shortURL := base64.URLEncoding.EncodeToString(bytes)[:urlLength]
-	return shortURL, nil
+	return string(shortURL), nil
 }
 
 func shortURLAndStore(url string) (string, error) {
