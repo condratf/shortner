@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/condratf/shortner/internal/app/config"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -45,7 +46,7 @@ func TestShortenerRouter(t *testing.T) {
 			path:           "/",
 			body:           "http://example.com",
 			expectedStatus: http.StatusCreated,
-			expectedBody:   "http://localhost:8080/",
+			expectedBody:   config.BaseURL,
 		},
 		{
 			name:           "POST request with empty body",

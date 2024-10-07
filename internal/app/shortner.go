@@ -2,7 +2,11 @@ package app
 
 import (
 	"crypto/rand"
+	"fmt"
 	"math/big"
+	"net/url"
+
+	"github.com/condratf/shortner/internal/app/config"
 )
 
 type urlStorage map[string]string
@@ -24,20 +28,20 @@ func (m *URLNotExistError) Error() string {
 }
 
 func generateShortedKey() (string, error) {
-	shortURL := make([]byte, urlLength)
+	shorted := make([]byte, urlLength)
 
-	for i := range shortURL {
+	for i := range shorted {
 		num, err := rand.Int(rand.Reader, big.NewInt(charsetSize))
 		if err != nil {
 			return "", err
 		}
-		shortURL[i] = charset[num.Int64()]
+		shorted[i] = charset[num.Int64()]
 	}
 
-	return string(shortURL), nil
+	return string(shorted), nil
 }
 
-func shortURLAndStore(url string) (string, error) {
+func shortURLAndStore(originalURL string) (string, error) {
 	key, err := generateShortedKey()
 
 	if err != nil {
@@ -45,12 +49,19 @@ func shortURLAndStore(url string) (string, error) {
 	}
 
 	if _, ok := storage[key]; ok {
-		return shortURLAndStore(url)
+		return shortURLAndStore(originalURL)
 	}
 
-	storage[key] = url
+	storage[key] = originalURL
 
-	return "http://localhost:8080/" + key, nil
+	baseURL, err := url.Parse(config.BaseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base URL: %w", err)
+	}
+
+	baseURL.Path = baseURL.Path + "/" + key
+
+	return baseURL.String(), nil
 }
 
 func getURL(key string) (string, error) {

@@ -1,15 +1,12 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/condratf/shortner/internal/app"
 )
 
 func main() {
-	fmt.Println("start")
-
-	if app.Server() != nil {
+	err := app.Server()
+	if err != nil {
 		panic("server has crashed")
 	}
 }
