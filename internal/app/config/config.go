@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"os"
 )
 
 var (
@@ -10,11 +11,20 @@ var (
 )
 
 func InitConfig() {
-	addr := flag.String("a", Addr, "HTTP server address")
-	baseURL := flag.String("b", BaseURL, "Base URL for shortened URL")
+	addr := flag.String("a", "", "HTTP server address")
+	baseURL := flag.String("b", "", "Base URL for shortened URL")
 
 	flag.Parse()
 
-	Addr = *addr
-	BaseURL = *baseURL
+	if envAddr := os.Getenv("SERVER_ADDRESS"); envAddr != "" {
+		Addr = envAddr
+	} else if *addr != "" {
+		Addr = *addr
+	}
+
+	if envBaseURL := os.Getenv("BASE_URL"); envBaseURL != "" {
+		BaseURL = envBaseURL
+	} else if *baseURL != "" {
+		BaseURL = *baseURL
+	}
 }
