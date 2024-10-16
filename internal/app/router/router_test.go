@@ -1,7 +1,8 @@
-package app
+package router
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,13 +14,15 @@ import (
 
 func TestShortenerRouter(t *testing.T) {
 	tests := []struct {
-		name           string
-		method         string
-		path           string
-		body           string
-		expectedStatus int
-		expectedBody   string
-		expectedHeader string
+		name             string
+		method           string
+		path             string
+		body             string
+		expectedStatus   int
+		expectedBody     string
+		expectedHeader   string
+		shortURLAndStore func(string) (string, error)
+		getURL           func(string) (string, error)
 	}{
 		{
 			name:           "GET request with valid ID",
@@ -27,18 +30,28 @@ func TestShortenerRouter(t *testing.T) {
 			path:           "/valid-id",
 			expectedStatus: http.StatusTemporaryRedirect,
 			expectedHeader: "http://example.com",
+			getURL: func(id string) (string, error) {
+				if id == "valid-id" {
+					return "http://example.com", nil
+				}
+				return "", errors.New("invalid ID")
+			},
 		},
 		{
 			name:           "GET request with invalid ID",
 			method:         http.MethodGet,
 			path:           "/invalid-id",
 			expectedStatus: http.StatusBadRequest,
+			getURL: func(id string) (string, error) {
+				return "", errors.New("invalid ID")
+			},
 		},
 		{
 			name:           "GET request with no ID",
 			method:         http.MethodGet,
 			path:           "/",
 			expectedStatus: http.StatusNotFound,
+			getURL:         nil,
 		},
 		{
 			name:           "POST request with valid URL",
@@ -46,7 +59,13 @@ func TestShortenerRouter(t *testing.T) {
 			path:           "/",
 			body:           "http://example.com",
 			expectedStatus: http.StatusCreated,
-			expectedBody:   config.BaseURL,
+			expectedBody:   config.Config.BaseURL,
+			shortURLAndStore: func(url string) (string, error) {
+				if url == "http://example.com" {
+					return config.Config.BaseURL, nil
+				}
+				return "", errors.New("could not store URL")
+			},
 		},
 		{
 			name:           "POST request with empty body",
@@ -55,29 +74,25 @@ func TestShortenerRouter(t *testing.T) {
 			body:           "",
 			expectedStatus: http.StatusBadRequest,
 			expectedBody:   "could not read request body",
+			shortURLAndStore: func(url string) (string, error) {
+				return "", nil
+			},
 		},
 		{
 			name:           "Invalid method (PUT request)",
 			method:         http.MethodPut,
 			path:           "/valid-id",
 			expectedStatus: http.StatusMethodNotAllowed,
+			getURL:         nil,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// reset storage
-			storage = make(map[string]string)
-
-			// populate the storage if the test involves a valid ID
-			if tt.path == "/valid-id" {
-				storage["valid-id"] = "http://example.com"
-			}
-
 			req := httptest.NewRequest(tt.method, tt.path, bytes.NewBufferString(tt.body))
 			recorder := httptest.NewRecorder()
 
-			router := ShortenerRouter()
+			router := ShortenerRouter(tt.shortURLAndStore, tt.getURL)
 			router.ServeHTTP(recorder, req)
 
 			assert.Equal(t, tt.expectedStatus, recorder.Code)

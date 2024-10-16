@@ -5,10 +5,15 @@ import (
 	"os"
 )
 
-var (
-	Addr    string = "localhost:8080"
-	BaseURL string = "http://localhost:8080"
-)
+type config struct {
+	Addr    string
+	BaseURL string
+}
+
+var Config = config{
+	Addr:    "localhost:8080",
+	BaseURL: "http://localhost:8080",
+}
 
 func InitConfig() {
 	addr := flag.String("a", "", "HTTP server address")
@@ -17,14 +22,14 @@ func InitConfig() {
 	flag.Parse()
 
 	if envAddr := os.Getenv("SERVER_ADDRESS"); envAddr != "" {
-		Addr = envAddr
+		Config.Addr = envAddr
 	} else if *addr != "" {
-		Addr = *addr
+		Config.Addr = *addr
 	}
 
 	if envBaseURL := os.Getenv("BASE_URL"); envBaseURL != "" {
-		BaseURL = envBaseURL
+		Config.BaseURL = envBaseURL
 	} else if *baseURL != "" {
-		BaseURL = *baseURL
+		Config.BaseURL = *baseURL
 	}
 }
