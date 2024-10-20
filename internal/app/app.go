@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/condratf/shortner/internal/app/config"
+	"github.com/condratf/shortner/internal/app/logger"
 	"github.com/condratf/shortner/internal/app/router"
 	"github.com/condratf/shortner/internal/app/shortener"
 	"github.com/condratf/shortner/internal/app/storage"
@@ -17,6 +18,8 @@ func Server() error {
 	short := shortener.NewShortener()
 	store := storage.NewInMemoryStore()
 	r := chi.NewRouter()
+
+	r.Use(logger.LoggingMiddleware(logger.InitLogger()))
 
 	shortenerRouter := router.ShortenerRouter(shortURLAndStore(short, store), getURL(store))
 	r.Mount("/", shortenerRouter)
