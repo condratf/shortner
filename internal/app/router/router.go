@@ -14,6 +14,7 @@ func ShortenerRouter(shortURLAndStore func(string) (string, error), getURL func(
 		http.NotFound(w, r)
 	})
 	r.Post("/", createShortURLHandler(shortURLAndStore))
+	r.Post("/api/shorten", createShortURLHandlerAPIShorten(shortURLAndStore))
 
 	return r
 }
