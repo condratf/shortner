@@ -8,6 +8,8 @@ import (
 
 func ShortenerRouter(shortURLAndStore func(string) (string, error), getURL func(string) (string, error)) http.Handler {
 	r := chi.NewRouter()
+	r.Use(compressionMiddleware)
+	r.Use(decompressMiddleware)
 
 	r.Get("/{id}", redirectHandler(getURL))
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
