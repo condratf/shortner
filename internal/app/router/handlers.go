@@ -1,9 +1,11 @@
 package router
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -82,5 +84,19 @@ func redirectHandler(getURL func(string) (string, error)) func(w http.ResponseWr
 		w.Header().Set("Content-Type", "text/plain")
 		w.Header().Set("Location", url)
 		w.WriteHeader(http.StatusTemporaryRedirect)
+	}
+}
+
+func createPingHandler(pingDB func(ctx context.Context) error) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		if err := pingDB(ctx); err != nil {
+			http.Error(w, "Database connection error", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
 	}
 }

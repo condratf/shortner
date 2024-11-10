@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -125,10 +126,12 @@ func TestShortenerRouter(t *testing.T) {
 				}
 			}
 
+			pingDB := func(ctx context.Context) error { return nil }
+
 			req := httptest.NewRequest(tt.method, tt.path, reqBody)
 			recorder := httptest.NewRecorder()
 
-			router := ShortenerRouter(tt.shortURLAndStore, tt.getURL)
+			router := ShortenerRouter(tt.shortURLAndStore, tt.getURL, pingDB)
 			router.ServeHTTP(recorder, req)
 
 			assert.Equal(t, tt.expectedStatus, recorder.Code)
