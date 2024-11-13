@@ -18,16 +18,32 @@ import (
 func Server() error {
 	config.InitConfig()
 	short := shortener.NewShortener()
-	store := storage.NewInMemoryStore()
+	var store storage.Storage
+
+	// Determine storage based on priority
+	if config.Config.DatabaseDSN != "" {
+		if err := db.InitDB(); err != nil {
+			log.Printf("Failed to initialize database: %v", err)
+		} else {
+			defer db.CloseDB()
+			store, err = storage.NewPostgresStore(db.DB)
+			if err != nil {
+				log.Fatalf("Failed to initialize PostgreSQL storage: %v", err)
+			}
+		}
+	} else if config.Config.FilePath != "" {
+		fileStore := storage.NewInMemoryStore()
+		err := fileStore.LoadFromFile(config.Config.FilePath)
+		if err != nil {
+			log.Fatalf("Failed to load from file: %v", err)
+		}
+		store = fileStore
+	} else {
+		store = storage.NewInMemoryStore()
+	}
 
 	r := chi.NewRouter()
-
 	r.Use(logger.LoggingMiddleware(logger.InitLogger()))
-
-	if err := db.InitDB(); err != nil {
-		log.Printf("Failed to initialize database: %v", err)
-	}
-	defer db.CloseDB()
 
 	shortenerRouter := router.ShortenerRouter(shortURLAndStore(short, store), getURL(store), db.PingDB)
 	r.Mount("/", shortenerRouter)
