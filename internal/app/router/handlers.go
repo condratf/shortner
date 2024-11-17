@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/condratf/shortner/internal/app/sharedtypes"
+	"github.com/condratf/shortner/internal/app/storage"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -40,6 +42,39 @@ func createShortURLHandlerAPIShorten(shortURLAndStore func(string) (string, erro
 		w.WriteHeader(http.StatusCreated)
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			http.Error(w, "could not encode response", http.StatusInternalServerError)
+		}
+	}
+}
+
+func createShortURLHandlerAPIShortenBatch(
+	shortURLAndStoreBatch func([]sharedtypes.RequestPayloadBatch) ([]storage.BatchItem, error),
+) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req []sharedtypes.RequestPayloadBatch
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req) == 0 {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
+
+		batchData, err := shortURLAndStoreBatch(req)
+		if err != nil {
+			http.Error(w, "Failed to process batch", http.StatusInternalServerError)
+			return
+		}
+
+		resp := make([]sharedtypes.ResponsePayloadBatch, len(batchData))
+		for i, item := range batchData {
+			resp[i] = sharedtypes.ResponsePayloadBatch{
+				CorrelationID: item.CorrelationID,
+				ShortURL:      item.ShortURL,
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		}
 	}
 }
@@ -89,7 +124,7 @@ func redirectHandler(getURL func(string) (string, error)) func(w http.ResponseWr
 
 func createPingHandler(pingDB func(ctx context.Context) error) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
 
 		if err := pingDB(ctx); err != nil {

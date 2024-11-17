@@ -16,8 +16,15 @@ type URLData struct {
 
 type UUID = string
 
+type BatchItem struct {
+	CorrelationID string `json:"correlation_id"`
+	ShortURL      string `json:"short_url"`
+	OriginalURL   string `json:"original_url"`
+}
+
 type Storage interface {
 	Save(shortURL, originalURL string) (UUID, error)
+	SaveBatch([]BatchItem) ([]URLData, error)
 	Get(id string) (string, error)
 	LoadFromFile(filePath string) error
 	SaveToFile(filePath string) error
@@ -39,6 +46,18 @@ func (s *InMemoryStore) Save(shortURL, originalURL string) (string, error) {
 		OriginalURL: originalURL,
 	}
 	return id, nil
+}
+
+func (s *InMemoryStore) SaveBatch(items []BatchItem) ([]URLData, error) {
+	var urlDataList []URLData
+	for _, item := range items {
+		urlDataList = append(urlDataList, URLData{
+			UUID:        item.CorrelationID,
+			ShortURL:    item.ShortURL,
+			OriginalURL: item.OriginalURL,
+		})
+	}
+	return urlDataList, nil
 }
 
 func (s *InMemoryStore) Get(shortURL string) (string, error) {

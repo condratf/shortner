@@ -11,20 +11,23 @@ import (
 	"testing"
 
 	"github.com/condratf/shortner/internal/app/config"
+	"github.com/condratf/shortner/internal/app/sharedtypes"
+	"github.com/condratf/shortner/internal/app/storage"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestShortenerRouter(t *testing.T) {
 	tests := []struct {
-		name             string
-		method           string
-		path             string
-		body             interface{} // Changed to interface{} to support different types
-		expectedStatus   int
-		expectedBody     string
-		expectedHeader   string
-		shortURLAndStore func(string) (string, error)
-		getURL           func(string) (string, error)
+		name                  string
+		method                string
+		path                  string
+		body                  interface{}
+		expectedStatus        int
+		expectedBody          string
+		expectedHeader        string
+		shortURLAndStore      func(string) (string, error)
+		shortURLAndStoreBatch func([]sharedtypes.RequestPayloadBatch) ([]storage.BatchItem, error)
+		getURL                func(string) (string, error)
 	}{
 		{
 			name:           "GET request with valid ID",
@@ -131,7 +134,7 @@ func TestShortenerRouter(t *testing.T) {
 			req := httptest.NewRequest(tt.method, tt.path, reqBody)
 			recorder := httptest.NewRecorder()
 
-			router := ShortenerRouter(tt.shortURLAndStore, tt.getURL, pingDB)
+			router := ShortenerRouter(tt.shortURLAndStore, tt.getURL, tt.shortURLAndStoreBatch, pingDB)
 			router.ServeHTTP(recorder, req)
 
 			assert.Equal(t, tt.expectedStatus, recorder.Code)

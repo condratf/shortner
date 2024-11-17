@@ -42,6 +42,37 @@ func (s *PostgresStore) Save(shortURL, originalURL string) (string, error) {
 	return id, nil
 }
 
+func (s *PostgresStore) SaveBatch(items []BatchItem) ([]URLData, error) {
+	var urlDataList []URLData
+	query := `INSERT INTO urls (id, short_url, original_url) VALUES ($1, $2, $3)`
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("could not begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	for _, item := range items {
+		_, err := tx.Exec(query, item.CorrelationID, item.ShortURL, item.OriginalURL)
+		if err != nil {
+			tx.Rollback()
+			return nil, fmt.Errorf("could not insert url: %w", err)
+		}
+
+		urlDataList = append(urlDataList, URLData{
+			UUID:        item.CorrelationID,
+			ShortURL:    item.ShortURL,
+			OriginalURL: item.OriginalURL,
+		})
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("could not commit transaction: %w", err)
+	}
+
+	return urlDataList, nil
+}
+
 func (s *PostgresStore) Get(shortURL string) (string, error) {
 	var originalURL string
 	query := `SELECT original_url FROM urls WHERE short_url = $1`

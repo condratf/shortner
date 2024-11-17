@@ -16,7 +16,7 @@ var Config = config{
 	Addr:        "localhost:8080",
 	BaseURL:     "http://localhost:8080",
 	FilePath:    "./shortener.json",
-	DatabaseDSN: "",
+	DatabaseDSN: "postgres://user:password@localhost/dbname?sslmode=disable",
 }
 
 func InitConfig() {

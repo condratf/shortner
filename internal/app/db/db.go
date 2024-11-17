@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/condratf/shortner/internal/app/config"
@@ -38,5 +39,6 @@ func PingDB(ctx context.Context) error {
 }
 
 func CloseDB() error {
+	log.Println("closing the database connection")
 	return DB.Close()
 }
