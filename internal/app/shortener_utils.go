@@ -1,15 +1,16 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"log"
-	"net/url"
 
 	"github.com/condratf/shortner/internal/app/config"
 	"github.com/condratf/shortner/internal/app/db"
 	"github.com/condratf/shortner/internal/app/sharedtypes"
 	"github.com/condratf/shortner/internal/app/shortener"
 	"github.com/condratf/shortner/internal/app/storage"
+	"github.com/condratf/shortner/internal/app/utils"
 )
 
 func shortURLAndStore(
@@ -27,17 +28,19 @@ func shortURLAndStore(
 			return inner(originalURL)
 		}
 
-		store.Save(key, originalURL)
+		_, err = store.Save(key, originalURL)
+		if errors.Is(err, &storage.ErrURLExists{}) {
+			fmt.Println("URL already exists")
+			return "", err
+		}
 		store.SaveToFile(config.Config.FilePath)
 
-		baseURL, err := url.Parse(config.Config.BaseURL)
+		shortURL, err := utils.ConstructURL(config.Config.BaseURL, key)
 		if err != nil {
-			return "", fmt.Errorf("invalid base URL: %w", err)
+			return "", err
 		}
 
-		baseURL.Path = baseURL.Path + "/" + key
-
-		return baseURL.String(), nil
+		return shortURL, nil
 	}
 
 	return inner
@@ -61,6 +64,7 @@ func shortURLAndStoreBatch(
 ) func(origURLs []sharedtypes.RequestPayloadBatch) ([]storage.BatchItem, error) {
 	return func(origURLs []sharedtypes.RequestPayloadBatch) ([]storage.BatchItem, error) {
 		var batchData []storage.BatchItem
+		var batchDataResponse []storage.BatchItem
 
 		for _, orig := range origURLs {
 			key, err := short.Shorten(orig.OriginalURL)
@@ -68,23 +72,33 @@ func shortURLAndStoreBatch(
 				return nil, fmt.Errorf("failed to shorten URL %s: %w", orig.OriginalURL, err)
 			}
 
-			if _, err = store.Get(key); err == nil {
-				continue
-			}
-
 			batchData = append(batchData, storage.BatchItem{
 				CorrelationID: orig.CorrelationID,
 				ShortURL:      key,
+				OriginalURL:   orig.OriginalURL,
+			})
+
+			shortURL, err := utils.ConstructURL(config.Config.BaseURL, key)
+			if err != nil {
+				return nil, err
+			}
+
+			batchDataResponse = append(batchDataResponse, storage.BatchItem{
+				CorrelationID: orig.CorrelationID,
+				ShortURL:      shortURL,
 				OriginalURL:   orig.OriginalURL,
 			})
 		}
 
 		_, err := store.SaveBatch(batchData)
 		if err != nil {
+			if errors.Is(err, &storage.ErrURLExists{}) {
+				return nil, err
+			}
 			return nil, fmt.Errorf("failed to save batch: %w", err)
 		}
 
-		return batchData, nil
+		return batchDataResponse, nil
 	}
 }
 

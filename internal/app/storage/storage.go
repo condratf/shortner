@@ -3,6 +3,7 @@ package storage
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 
 	"github.com/google/uuid"
@@ -34,6 +35,20 @@ type InMemoryStore struct {
 	data map[string]URLData
 }
 
+type ErrURLExists struct {
+	ID               string
+	ExistingShortURL string
+}
+
+func (e *ErrURLExists) Error() string {
+	return fmt.Sprintf("url already exists with short URL: %s", e.ExistingShortURL)
+}
+
+func (e *ErrURLExists) Is(target error) bool {
+	_, ok := target.(*ErrURLExists)
+	return ok
+}
+
 func NewInMemoryStore() Storage {
 	return &InMemoryStore{data: make(map[string]URLData)}
 }
@@ -56,6 +71,11 @@ func (s *InMemoryStore) SaveBatch(items []BatchItem) ([]URLData, error) {
 			ShortURL:    item.ShortURL,
 			OriginalURL: item.OriginalURL,
 		})
+		s.data[item.ShortURL] = URLData{
+			UUID:        item.CorrelationID,
+			ShortURL:    item.ShortURL,
+			OriginalURL: item.OriginalURL,
+		}
 	}
 	return urlDataList, nil
 }

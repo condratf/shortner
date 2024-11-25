@@ -20,7 +20,7 @@ func NewPostgresStore(db *sql.DB) (Storage, error) {
 		CREATE TABLE IF NOT EXISTS urls (
 			id UUID PRIMARY KEY,
 			short_url TEXT UNIQUE NOT NULL,
-			original_url TEXT NOT NULL
+			original_url TEXT UNIQUE NOT NULL
 		)
 	`
 	if _, err := db.Exec(query); err != nil {
@@ -32,11 +32,22 @@ func NewPostgresStore(db *sql.DB) (Storage, error) {
 
 func (s *PostgresStore) Save(shortURL, originalURL string) (string, error) {
 	id := uuid.New().String()
-	query := `INSERT INTO urls (id, short_url, original_url) VALUES ($1, $2, $3)`
+	query := `
+    INSERT INTO urls (id, short_url, original_url)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (original_url) DO NOTHING
+    RETURNING id, short_url
+  `
 
-	_, err := s.db.Exec(query, id, shortURL, originalURL)
+	var returnedShortURL string
+	err := s.db.QueryRow(query, id, shortURL, originalURL).Scan(&id, &returnedShortURL)
+
 	if err != nil {
-		return "", fmt.Errorf("could not insert url: %w", err)
+		existingShortURL, fetchErr := s.getShortURLByOriginal(originalURL)
+		if fetchErr != nil {
+			return "", fmt.Errorf("could not fetch existing short URL: %w", fetchErr)
+		}
+		return "", &ErrURLExists{ExistingShortURL: existingShortURL, ID: id}
 	}
 
 	return id, nil
@@ -44,7 +55,12 @@ func (s *PostgresStore) Save(shortURL, originalURL string) (string, error) {
 
 func (s *PostgresStore) SaveBatch(items []BatchItem) ([]URLData, error) {
 	var urlDataList []URLData
-	query := `INSERT INTO urls (id, short_url, original_url) VALUES ($1, $2, $3)`
+	query := `
+    INSERT INTO urls (id, short_url, original_url)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (original_url) DO NOTHING
+    RETURNING id, short_url
+  `
 
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -53,15 +69,21 @@ func (s *PostgresStore) SaveBatch(items []BatchItem) ([]URLData, error) {
 	defer tx.Rollback()
 
 	for _, item := range items {
-		_, err := tx.Exec(query, item.CorrelationID, item.ShortURL, item.OriginalURL)
+		var id string
+		var returnedShortURL string
+
+		err := tx.QueryRow(query, item.CorrelationID, item.ShortURL, item.OriginalURL).Scan(&id, &returnedShortURL)
 		if err != nil {
-			tx.Rollback()
-			return nil, fmt.Errorf("could not insert url: %w", err)
+			existingShortURL, fetchErr := s.getShortURLByOriginal(item.OriginalURL)
+			if fetchErr != nil {
+				return nil, fmt.Errorf("could not insert or fetch URL: %w", err)
+			}
+			return nil, &ErrURLExists{ExistingShortURL: existingShortURL, ID: item.CorrelationID}
 		}
 
 		urlDataList = append(urlDataList, URLData{
 			UUID:        item.CorrelationID,
-			ShortURL:    item.ShortURL,
+			ShortURL:    returnedShortURL,
 			OriginalURL: item.OriginalURL,
 		})
 	}
@@ -96,4 +118,14 @@ func (s *PostgresStore) LoadFromFile(_ string) error {
 func (s *PostgresStore) SaveToFile(_ string) error {
 	// не поддерживаем сохранение в файл
 	return nil
+}
+
+func (s *PostgresStore) getShortURLByOriginal(originalURL string) (string, error) {
+	var shortURL string
+	query := `SELECT short_url FROM urls WHERE original_url = $1`
+	err := s.db.QueryRow(query, originalURL).Scan(&shortURL)
+	if err != nil {
+		return "", fmt.Errorf("could not fetch short URL by original URL: %w", err)
+	}
+	return shortURL, nil
 }

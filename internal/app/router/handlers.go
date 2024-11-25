@@ -3,12 +3,16 @@ package router
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
 
+	"github.com/condratf/shortner/internal/app/config"
 	"github.com/condratf/shortner/internal/app/sharedtypes"
 	"github.com/condratf/shortner/internal/app/storage"
+	"github.com/condratf/shortner/internal/app/utils"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -33,6 +37,18 @@ func createShortURLHandlerAPIShorten(shortURLAndStore func(string) (string, erro
 
 		shortURL, err := shortURLAndStore(req.URL)
 		if err != nil {
+			if errors.Is(err, &storage.ErrURLExists{}) {
+				var urlExistsErr *storage.ErrURLExists
+				if errors.As(err, &urlExistsErr) {
+					shortURL, err := utils.ConstructURL(config.Config.BaseURL, urlExistsErr.ExistingShortURL)
+					fmt.Println(shortURL)
+					if err != nil {
+						http.Error(w, "could not construct URL", http.StatusInternalServerError)
+					}
+					http.Error(w, shortURL, http.StatusConflict)
+					return
+				}
+			}
 			http.Error(w, "could not store URL", http.StatusInternalServerError)
 			return
 		}
@@ -59,6 +75,20 @@ func createShortURLHandlerAPIShortenBatch(
 
 		batchData, err := shortURLAndStoreBatch(req)
 		if err != nil {
+			if errors.Is(err, &storage.ErrURLExists{}) {
+				var urlExistsErr *storage.ErrURLExists
+				if errors.As(err, &urlExistsErr) {
+					shortURL, err := utils.ConstructURL(config.Config.BaseURL, urlExistsErr.ExistingShortURL)
+					fmt.Println(shortURL)
+					if err != nil {
+						http.Error(w, "could not construct URL", http.StatusInternalServerError)
+					}
+					http.Error(w, shortURL, http.StatusConflict)
+					return
+				}
+			}
+			fmt.Println("error")
+			fmt.Println(err)
 			http.Error(w, "Failed to process batch", http.StatusInternalServerError)
 			return
 		}
@@ -91,6 +121,18 @@ func createShortURLHandler(shortURLAndStore func(string) (string, error)) func(w
 
 		shortURL, err := shortURLAndStore(string(url))
 		if err != nil {
+			if errors.Is(err, &storage.ErrURLExists{}) {
+				var urlExistsErr *storage.ErrURLExists
+				if errors.As(err, &urlExistsErr) {
+					shortURL, err := utils.ConstructURL(config.Config.BaseURL, urlExistsErr.ExistingShortURL)
+					fmt.Println(shortURL)
+					if err != nil {
+						http.Error(w, "could not construct URL", http.StatusInternalServerError)
+					}
+					http.Error(w, shortURL, http.StatusConflict)
+					return
+				}
+			}
 			http.Error(w, "could not store URL", http.StatusInternalServerError)
 			return
 		}
