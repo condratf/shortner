@@ -1,12 +1,21 @@
 package storage
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/google/uuid"
+)
+
+const (
+	FilePermUserReadWrite = 0600
+	FilePermUserGroupRead = 0640
+	FilePermAllReadWrite  = 0666
+	FilePermAllReadOnly   = 0644
 )
 
 type URLData struct {
@@ -33,6 +42,7 @@ type Storage interface {
 
 type InMemoryStore struct {
 	data map[string]URLData
+	mu   sync.RWMutex
 }
 
 type ErrURLExists struct {
@@ -55,6 +65,9 @@ func NewInMemoryStore() Storage {
 
 func (s *InMemoryStore) Save(shortURL, originalURL string) (string, error) {
 	id := uuid.New().String()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.data[shortURL] = URLData{
 		UUID:        id,
 		ShortURL:    shortURL,
@@ -65,22 +78,25 @@ func (s *InMemoryStore) Save(shortURL, originalURL string) (string, error) {
 
 func (s *InMemoryStore) SaveBatch(items []BatchItem) ([]URLData, error) {
 	var urlDataList []URLData
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	for _, item := range items {
-		urlDataList = append(urlDataList, URLData{
-			UUID:        item.CorrelationID,
-			ShortURL:    item.ShortURL,
-			OriginalURL: item.OriginalURL,
-		})
-		s.data[item.ShortURL] = URLData{
+		urlData := URLData{
 			UUID:        item.CorrelationID,
 			ShortURL:    item.ShortURL,
 			OriginalURL: item.OriginalURL,
 		}
+		urlDataList = append(urlDataList, urlData)
+		s.data[item.ShortURL] = urlData
 	}
 	return urlDataList, nil
 }
 
 func (s *InMemoryStore) Get(shortURL string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	urlData, ok := s.data[shortURL]
 	if !ok {
 		return "", errors.New("url not found")
@@ -103,6 +119,9 @@ func (s *InMemoryStore) LoadFromFile(filePath string) error {
 		return err
 	}
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	for _, urlData := range urlDataList {
 		s.data[urlData.ShortURL] = urlData
 	}
@@ -111,22 +130,35 @@ func (s *InMemoryStore) LoadFromFile(filePath string) error {
 }
 
 func (s *InMemoryStore) SaveToFile(filePath string) error {
+	s.mu.RLock()
 	var urlDataList []URLData
 	for _, urlData := range s.data {
 		urlDataList = append(urlDataList, urlData)
 	}
+	s.mu.RUnlock()
 
 	data, err := json.Marshal(urlDataList)
 	if err != nil {
 		return err
 	}
 
-	file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, FilePermAllReadOnly)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 
-	_, err = file.Write(data)
-	return err
+	writer := bufio.NewWriter(file)
+
+	_, err = writer.Write(data)
+	if err != nil {
+		return err
+	}
+
+	err = writer.Flush()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
