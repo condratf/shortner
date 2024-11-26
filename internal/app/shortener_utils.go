@@ -25,6 +25,7 @@ func shortURLAndStore(
 		}
 
 		store.Save(key, originalURL)
+		store.SaveToFile(config.Config.FilePath)
 
 		baseURL, err := url.Parse(config.Config.BaseURL)
 		if err != nil {
@@ -41,7 +42,9 @@ func shortURLAndStore(
 
 func getURL(store storage.Storage) func(key string) (string, error) {
 	return func(key string) (string, error) {
+		store.LoadFromFile(config.Config.FilePath)
 		url, err := store.Get(key)
+
 		if err != nil {
 			return "", err
 		}

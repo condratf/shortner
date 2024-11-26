@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -17,7 +18,7 @@ func TestShortenerRouter(t *testing.T) {
 		name             string
 		method           string
 		path             string
-		body             string
+		body             interface{} // Changed to interface{} to support different types
 		expectedStatus   int
 		expectedBody     string
 		expectedHeader   string
@@ -51,7 +52,6 @@ func TestShortenerRouter(t *testing.T) {
 			method:         http.MethodGet,
 			path:           "/",
 			expectedStatus: http.StatusNotFound,
-			getURL:         nil,
 		},
 		{
 			name:           "POST request with valid URL",
@@ -79,17 +79,53 @@ func TestShortenerRouter(t *testing.T) {
 			},
 		},
 		{
+			name:           "POST request with JSON body",
+			method:         http.MethodPost,
+			path:           "/api/shorten",
+			body:           map[string]string{"url": "http://example.com"},
+			expectedStatus: http.StatusCreated,
+			expectedBody:   `{"result":"` + config.Config.BaseURL + `"}`,
+			shortURLAndStore: func(url string) (string, error) {
+				if url == "http://example.com" {
+					return config.Config.BaseURL, nil
+				}
+				return "", errors.New("could not store URL")
+			},
+		},
+		{
+			name:           "POST request with empty URL in JSON",
+			method:         http.MethodPost,
+			path:           "/api/shorten",
+			body:           map[string]string{"url": ""},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "could not decode request body",
+			shortURLAndStore: func(url string) (string, error) {
+				return "", nil
+			},
+		},
+		{
 			name:           "Invalid method (PUT request)",
 			method:         http.MethodPut,
 			path:           "/valid-id",
 			expectedStatus: http.StatusMethodNotAllowed,
-			getURL:         nil,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(tt.method, tt.path, bytes.NewBufferString(tt.body))
+			var reqBody io.Reader
+			if tt.body != nil {
+				switch v := tt.body.(type) {
+				case string:
+					reqBody = bytes.NewBufferString(v)
+				case map[string]string:
+					jsonData, err := json.Marshal(v)
+					assert.NoError(t, err)
+					reqBody = bytes.NewBuffer(jsonData)
+				}
+			}
+
+			req := httptest.NewRequest(tt.method, tt.path, reqBody)
 			recorder := httptest.NewRecorder()
 
 			router := ShortenerRouter(tt.shortURLAndStore, tt.getURL)
