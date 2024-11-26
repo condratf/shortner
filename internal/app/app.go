@@ -27,7 +27,7 @@ func Server() error {
 	}
 
 	r := chi.NewRouter()
-	r.Use(logger.LoggingMiddleware(logger.InitLogger()))
+	r.Use(logger.LoggingMiddleware())
 
 	shortenerRouter := router.ShortenerRouter(
 		shortURLAndStore(short, store),

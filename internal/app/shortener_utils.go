@@ -48,7 +48,6 @@ func shortURLAndStore(
 
 func getURL(store storage.Storage) func(key string) (string, error) {
 	return func(key string) (string, error) {
-		store.LoadFromFile(config.Config.FilePath)
 		url, err := store.Get(key)
 
 		if err != nil {

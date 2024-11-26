@@ -26,7 +26,7 @@ func (lw *loggingResponseWriter) Write(b []byte) (int, error) {
 	return size, err
 }
 
-func InitLogger() *zap.SugaredLogger {
+func initLogger() *zap.SugaredLogger {
 	logger, err := zap.NewProduction()
 
 	if err != nil {
@@ -35,7 +35,8 @@ func InitLogger() *zap.SugaredLogger {
 	return logger.Sugar()
 }
 
-func LoggingMiddleware(sugar *zap.SugaredLogger) func(http.Handler) http.Handler {
+func LoggingMiddleware() func(http.Handler) http.Handler {
+	sugar := initLogger()
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()

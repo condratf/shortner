@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/condratf/shortner/internal/app/config"
@@ -24,6 +25,47 @@ type responsePayload struct {
 	Result string `json:"result"`
 }
 
+func handleURLExistError(w http.ResponseWriter, err error, respType string) bool {
+	if errors.Is(err, &storage.ErrURLExists{}) {
+		var urlExistsErr *storage.ErrURLExists
+		if errors.As(err, &urlExistsErr) {
+			shortURL, err := utils.ConstructURL(config.Config.BaseURL, urlExistsErr.ExistingShortURL)
+			fmt.Println(shortURL)
+			if err != nil {
+				http.Error(w, "could not construct URL", http.StatusInternalServerError)
+				return true
+			}
+			shortURL = strings.TrimSpace(shortURL)
+			switch respType {
+			case "json":
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusConflict)
+				if err := json.NewEncoder(w).Encode(responsePayload{Result: shortURL}); err != nil {
+					http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				}
+			case "json-batch":
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusConflict)
+				if err := json.NewEncoder(w).Encode(sharedtypes.ResponsePayloadBatch{
+					CorrelationID: urlExistsErr.ID,
+					ShortURL:      shortURL,
+				}); err != nil {
+					http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				}
+			case "text":
+				w.Header().Set("Content-Type", "text/plain")
+				w.WriteHeader(http.StatusConflict)
+				_, writeErr := w.Write([]byte(shortURL))
+				if writeErr != nil {
+					http.Error(w, "could not write response", http.StatusInternalServerError)
+				}
+			}
+			return true
+		}
+	}
+	return false
+}
+
 func createShortURLHandlerAPIShorten(shortURLAndStore func(string) (string, error)) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req requestPayload
@@ -37,17 +79,8 @@ func createShortURLHandlerAPIShorten(shortURLAndStore func(string) (string, erro
 
 		shortURL, err := shortURLAndStore(req.URL)
 		if err != nil {
-			if errors.Is(err, &storage.ErrURLExists{}) {
-				var urlExistsErr *storage.ErrURLExists
-				if errors.As(err, &urlExistsErr) {
-					shortURL, err := utils.ConstructURL(config.Config.BaseURL, urlExistsErr.ExistingShortURL)
-					fmt.Println(shortURL)
-					if err != nil {
-						http.Error(w, "could not construct URL", http.StatusInternalServerError)
-					}
-					http.Error(w, shortURL, http.StatusConflict)
-					return
-				}
+			if handleURLExistError(w, err, "json") {
+				return
 			}
 			http.Error(w, "could not store URL", http.StatusInternalServerError)
 			return
@@ -75,20 +108,9 @@ func createShortURLHandlerAPIShortenBatch(
 
 		batchData, err := shortURLAndStoreBatch(req)
 		if err != nil {
-			if errors.Is(err, &storage.ErrURLExists{}) {
-				var urlExistsErr *storage.ErrURLExists
-				if errors.As(err, &urlExistsErr) {
-					shortURL, err := utils.ConstructURL(config.Config.BaseURL, urlExistsErr.ExistingShortURL)
-					fmt.Println(shortURL)
-					if err != nil {
-						http.Error(w, "could not construct URL", http.StatusInternalServerError)
-					}
-					http.Error(w, shortURL, http.StatusConflict)
-					return
-				}
+			if handleURLExistError(w, err, "json-batch") {
+				return
 			}
-			fmt.Println("error")
-			fmt.Println(err)
 			http.Error(w, "Failed to process batch", http.StatusInternalServerError)
 			return
 		}
@@ -121,17 +143,8 @@ func createShortURLHandler(shortURLAndStore func(string) (string, error)) func(w
 
 		shortURL, err := shortURLAndStore(string(url))
 		if err != nil {
-			if errors.Is(err, &storage.ErrURLExists{}) {
-				var urlExistsErr *storage.ErrURLExists
-				if errors.As(err, &urlExistsErr) {
-					shortURL, err := utils.ConstructURL(config.Config.BaseURL, urlExistsErr.ExistingShortURL)
-					fmt.Println(shortURL)
-					if err != nil {
-						http.Error(w, "could not construct URL", http.StatusInternalServerError)
-					}
-					http.Error(w, shortURL, http.StatusConflict)
-					return
-				}
+			if handleURLExistError(w, err, "text") {
+				return
 			}
 			http.Error(w, "could not store URL", http.StatusInternalServerError)
 			return
