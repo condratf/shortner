@@ -8,6 +8,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/condratf/shortner/internal/app/models"
 	"github.com/google/uuid"
 )
 
@@ -26,15 +27,9 @@ type URLData struct {
 
 type UUID = string
 
-type BatchItem struct {
-	CorrelationID string `json:"correlation_id"`
-	ShortURL      string `json:"short_url"`
-	OriginalURL   string `json:"original_url"`
-}
-
 type Storage interface {
 	Save(shortURL, originalURL string) (UUID, error)
-	SaveBatch([]BatchItem) ([]URLData, error)
+	SaveBatch([]models.BatchItem) ([]URLData, error)
 	Get(id string) (string, error)
 	LoadFromFile(filePath string) error
 	SaveToFile(filePath string) error
@@ -76,7 +71,7 @@ func (s *InMemoryStore) Save(shortURL, originalURL string) (string, error) {
 	return id, nil
 }
 
-func (s *InMemoryStore) SaveBatch(items []BatchItem) ([]URLData, error) {
+func (s *InMemoryStore) SaveBatch(items []models.BatchItem) ([]URLData, error) {
 	var urlDataList []URLData
 	s.mu.Lock()
 	defer s.mu.Unlock()

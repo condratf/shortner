@@ -8,7 +8,16 @@ import (
 	"time"
 
 	"github.com/condratf/shortner/internal/app/config"
+	"github.com/golang-migrate/migrate"
+	"github.com/golang-migrate/migrate/database/postgres"
+	_ "github.com/golang-migrate/migrate/source/file"
 	_ "github.com/lib/pq"
+)
+
+const (
+	connectionMaxLifeTime = time.Minute * 3
+	maxConnections        = 10
+	defaultTimeout        = 5 * time.Second
 )
 
 var DB *sql.DB
@@ -20,11 +29,11 @@ func InitDB() error {
 		return fmt.Errorf("could not connect to the database: %w", err)
 	}
 
-	DB.SetConnMaxLifetime(time.Minute * 3)
-	DB.SetMaxOpenConns(10)
-	DB.SetMaxIdleConns(10)
+	DB.SetConnMaxLifetime(connectionMaxLifeTime)
+	DB.SetMaxOpenConns(maxConnections)
+	DB.SetMaxIdleConns(maxConnections)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
 
 	if err := DB.PingContext(ctx); err != nil {
@@ -41,4 +50,28 @@ func PingDB(ctx context.Context) error {
 func CloseDB() error {
 	log.Println("closing the database connection")
 	return DB.Close()
+}
+
+func ApplyMigrations(dbURL string) error {
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		return fmt.Errorf("could not open database: %w", err)
+	}
+	defer db.Close()
+
+	driver, err := postgres.WithInstance(db, &postgres.Config{})
+	if err != nil {
+		return fmt.Errorf("could not create database driver: %w", err)
+	}
+
+	m, err := migrate.NewWithDatabaseInstance("file://./migrations", "postgres", driver)
+	if err != nil {
+		return fmt.Errorf("could not create migration instance: %w", err)
+	}
+
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		return fmt.Errorf("could not apply migrations: %w", err)
+	}
+
+	return nil
 }

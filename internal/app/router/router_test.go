@@ -11,8 +11,7 @@ import (
 	"testing"
 
 	"github.com/condratf/shortner/internal/app/config"
-	"github.com/condratf/shortner/internal/app/sharedtypes"
-	"github.com/condratf/shortner/internal/app/storage"
+	"github.com/condratf/shortner/internal/app/models"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -26,7 +25,7 @@ func TestShortenerRouter(t *testing.T) {
 		expectedBody          string
 		expectedHeader        string
 		shortURLAndStore      func(string) (string, error)
-		shortURLAndStoreBatch func([]sharedtypes.RequestPayloadBatch) ([]storage.BatchItem, error)
+		shortURLAndStoreBatch func([]models.RequestPayloadBatch) ([]models.BatchItem, error)
 		getURL                func(string) (string, error)
 	}{
 		{

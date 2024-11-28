@@ -1,4 +1,4 @@
-package sharedtypes
+package models
 
 type RequestPayloadBatch struct {
 	OriginalURL   string `json:"original_url"`
@@ -8,4 +8,10 @@ type RequestPayloadBatch struct {
 type ResponsePayloadBatch struct {
 	CorrelationID string `json:"correlation_id"`
 	ShortURL      string `json:"short_url"`
+}
+
+type BatchItem struct {
+	CorrelationID string `json:"correlation_id"`
+	ShortURL      string `json:"short_url"`
+	OriginalURL   string `json:"original_url"`
 }

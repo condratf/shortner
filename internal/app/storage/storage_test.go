@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/condratf/shortner/internal/app/models"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
@@ -19,7 +20,7 @@ func TestPostgresStore_SaveBatch(t *testing.T) {
 
 	store := &PostgresStore{db: db}
 
-	items := []BatchItem{
+	items := []models.BatchItem{
 		{CorrelationID: uuid.New().String(), ShortURL: "short1", OriginalURL: "http://example.com/1"},
 		{CorrelationID: uuid.New().String(), ShortURL: "short2", OriginalURL: "http://example.com/2"},
 	}

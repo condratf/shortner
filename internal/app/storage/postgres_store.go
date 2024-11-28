@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/condratf/shortner/internal/app/models"
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 )
@@ -53,7 +54,7 @@ func (s *PostgresStore) Save(shortURL, originalURL string) (string, error) {
 	return id, nil
 }
 
-func (s *PostgresStore) SaveBatch(items []BatchItem) ([]URLData, error) {
+func (s *PostgresStore) SaveBatch(items []models.BatchItem) ([]URLData, error) {
 	var urlDataList []URLData
 	query := `
     INSERT INTO urls (id, short_url, original_url)

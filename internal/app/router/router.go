@@ -4,15 +4,14 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/condratf/shortner/internal/app/sharedtypes"
-	"github.com/condratf/shortner/internal/app/storage"
+	"github.com/condratf/shortner/internal/app/models"
 	"github.com/go-chi/chi/v5"
 )
 
 func ShortenerRouter(
 	shortURLAndStore func(string) (string, error),
 	getURL func(string) (string, error),
-	shortURLAndStoreBatch func([]sharedtypes.RequestPayloadBatch) ([]storage.BatchItem, error),
+	shortURLAndStoreBatch func([]models.RequestPayloadBatch) ([]models.BatchItem, error),
 	pingDB func(ctx context.Context) error,
 ) http.Handler {
 	r := chi.NewRouter()

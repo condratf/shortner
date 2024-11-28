@@ -7,7 +7,7 @@ import (
 
 	"github.com/condratf/shortner/internal/app/config"
 	"github.com/condratf/shortner/internal/app/db"
-	"github.com/condratf/shortner/internal/app/sharedtypes"
+	"github.com/condratf/shortner/internal/app/models"
 	"github.com/condratf/shortner/internal/app/shortener"
 	"github.com/condratf/shortner/internal/app/storage"
 	"github.com/condratf/shortner/internal/app/utils"
@@ -60,10 +60,10 @@ func getURL(store storage.Storage) func(key string) (string, error) {
 func shortURLAndStoreBatch(
 	short shortener.Shortener,
 	store storage.Storage,
-) func(origURLs []sharedtypes.RequestPayloadBatch) ([]storage.BatchItem, error) {
-	return func(origURLs []sharedtypes.RequestPayloadBatch) ([]storage.BatchItem, error) {
-		var batchData []storage.BatchItem
-		var batchDataResponse []storage.BatchItem
+) func(origURLs []models.RequestPayloadBatch) ([]models.BatchItem, error) {
+	return func(origURLs []models.RequestPayloadBatch) ([]models.BatchItem, error) {
+		var batchData []models.BatchItem
+		var batchDataResponse []models.BatchItem
 
 		for _, orig := range origURLs {
 			key, err := short.Shorten(orig.OriginalURL)
@@ -71,7 +71,7 @@ func shortURLAndStoreBatch(
 				return nil, fmt.Errorf("failed to shorten URL %s: %w", orig.OriginalURL, err)
 			}
 
-			batchData = append(batchData, storage.BatchItem{
+			batchData = append(batchData, models.BatchItem{
 				CorrelationID: orig.CorrelationID,
 				ShortURL:      key,
 				OriginalURL:   orig.OriginalURL,
@@ -82,7 +82,7 @@ func shortURLAndStoreBatch(
 				return nil, err
 			}
 
-			batchDataResponse = append(batchDataResponse, storage.BatchItem{
+			batchDataResponse = append(batchDataResponse, models.BatchItem{
 				CorrelationID: orig.CorrelationID,
 				ShortURL:      shortURL,
 				OriginalURL:   orig.OriginalURL,
@@ -107,6 +107,12 @@ func initStore() (storage.Storage, error) {
 			log.Printf("Failed to initialize database: %v", err)
 			return nil, err
 		}
+
+		// if err := db.ApplyMigrations(config.Config.DatabaseDSN); err != nil {
+		// 	log.Printf("Failed to apply migrations: %v", err)
+		// 	return nil, err
+		// }
+
 		store, err := storage.NewPostgresStore(db.DB)
 		if err != nil {
 			log.Fatalf("Failed to initialize PostgreSQL storage: %v", err)
