@@ -31,9 +31,10 @@ func Server() error {
 
 	shortenerRouter := router.ShortenerRouter(
 		shortURLAndStore(short, store),
-		getURL(store),
 		shortURLAndStoreBatch(short, store),
+		getURL(store),
 		db.PingDB,
+		store,
 	)
 	r.Mount("/", shortenerRouter)
 	fmt.Printf("starting server at :%s\n", config.Config.Addr)

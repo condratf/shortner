@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS urls (
   id UUID PRIMARY KEY,
   short_url TEXT UNIQUE NOT NULL,
   original_url TEXT UNIQUE NOT NULL,
-  user_id UUID UNIQUE
+  user_id UUID
 );
 
 CREATE INDEX idx_short_url ON urls(short_url);

@@ -6,6 +6,14 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+const (
+	userCookieName = "user_id"
+	cookieSecret   = "your-secret-key"
 )
 
 type compressedResponseWriter struct {
@@ -66,6 +74,27 @@ func decompressMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		next.ServeHTTP(w, r)
+	})
+}
+
+func userAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie(userCookieName)
+		if err != nil || !isValidCookie(cookie) {
+			userID := uuid.New().String()
+			http.SetCookie(w, &http.Cookie{
+				Name:     userCookieName,
+				Value:    userID,
+				Path:     "/",
+				Expires:  time.Now().Add(24 * time.Hour),
+				HttpOnly: true,
+			})
+			r.AddCookie(&http.Cookie{
+				Name:  userCookieName,
+				Value: userID,
+			})
+		}
 		next.ServeHTTP(w, r)
 	})
 }
