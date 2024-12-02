@@ -16,19 +16,19 @@ import (
 func shortURLAndStore(
 	short shortener.Shortener,
 	store storage.Storage,
-) func(originalURL string) (string, error) {
-	var inner func(originalURL string) (string, error)
+) models.ShortURLAndStore {
+	var inner models.ShortURLAndStore
 
-	inner = func(originalURL string) (string, error) {
+	inner = func(originalURL string, userID *string) (string, error) {
 		key, err := short.Shorten(originalURL)
 		if err != nil {
 			return "", err
 		}
 		if url, _ := store.Get(key); url != "" {
-			return inner(originalURL)
+			return inner(originalURL, userID)
 		}
 
-		_, err = store.Save(key, originalURL)
+		_, err = store.Save(key, originalURL, userID)
 		if errors.Is(err, &storage.ErrURLExists{}) {
 			fmt.Println("URL already exists")
 			return "", err
@@ -60,8 +60,8 @@ func getURL(store storage.Storage) func(key string) (string, error) {
 func shortURLAndStoreBatch(
 	short shortener.Shortener,
 	store storage.Storage,
-) func(origURLs []models.RequestPayloadBatch) ([]models.BatchItem, error) {
-	return func(origURLs []models.RequestPayloadBatch) ([]models.BatchItem, error) {
+) models.ShortURLAndStoreBatch {
+	return func(origURLs []models.RequestPayloadBatch, userID *string) ([]models.BatchItem, error) {
 		var batchData []models.BatchItem
 		var batchDataResponse []models.BatchItem
 
@@ -89,7 +89,7 @@ func shortURLAndStoreBatch(
 			})
 		}
 
-		_, err := store.SaveBatch(batchData)
+		_, err := store.SaveBatch(batchData, userID)
 		if err != nil {
 			if errors.Is(err, &storage.ErrURLExists{}) {
 				return nil, err

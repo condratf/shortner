@@ -15,3 +15,12 @@ type BatchItem struct {
 	ShortURL      string `json:"short_url"`
 	OriginalURL   string `json:"original_url"`
 }
+
+type UserURLs struct {
+	ShortURL    string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
+}
+
+type ShortURLAndStore = func(originalURL string, userID *string) (string, error)
+
+type ShortURLAndStoreBatch = func(items []RequestPayloadBatch, userID *string) ([]BatchItem, error)

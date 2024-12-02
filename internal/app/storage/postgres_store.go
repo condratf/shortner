@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/condratf/shortner/internal/app/config"
 	"github.com/condratf/shortner/internal/app/models"
+	"github.com/condratf/shortner/internal/app/utils"
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 )
@@ -21,7 +23,8 @@ func NewPostgresStore(db *sql.DB) (Storage, error) {
 		CREATE TABLE IF NOT EXISTS urls (
 			id UUID PRIMARY KEY,
 			short_url TEXT UNIQUE NOT NULL,
-			original_url TEXT UNIQUE NOT NULL
+			original_url TEXT UNIQUE NOT NULL,
+			user_id UUID
 		)
 	`
 	if _, err := db.Exec(query); err != nil {
@@ -31,17 +34,17 @@ func NewPostgresStore(db *sql.DB) (Storage, error) {
 	return store, nil
 }
 
-func (s *PostgresStore) Save(shortURL, originalURL string) (string, error) {
+func (s *PostgresStore) Save(shortURL, originalURL string, userID *string) (string, error) {
 	id := uuid.New().String()
 	query := `
-    INSERT INTO urls (id, short_url, original_url)
-    VALUES ($1, $2, $3)
-    ON CONFLICT (original_url) DO NOTHING
-    RETURNING id, short_url
-  `
+		INSERT INTO urls (id, short_url, original_url, user_id)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (original_url) DO NOTHING
+		RETURNING id, short_url
+	`
 
 	var returnedShortURL string
-	err := s.db.QueryRow(query, id, shortURL, originalURL).Scan(&id, &returnedShortURL)
+	err := s.db.QueryRow(query, id, shortURL, originalURL, userID).Scan(&id, &returnedShortURL)
 
 	if err != nil {
 		existingShortURL, fetchErr := s.getShortURLByOriginal(originalURL)
@@ -54,36 +57,49 @@ func (s *PostgresStore) Save(shortURL, originalURL string) (string, error) {
 	return id, nil
 }
 
-func (s *PostgresStore) SaveBatch(items []models.BatchItem) ([]URLData, error) {
+func (s *PostgresStore) SaveBatch(items []models.BatchItem, userID *string) ([]URLData, error) {
 	var urlDataList []URLData
+
 	query := `
-    INSERT INTO urls (id, short_url, original_url)
-    VALUES ($1, $2, $3)
-    ON CONFLICT (original_url) DO NOTHING
-    RETURNING id, short_url
-  `
+		INSERT INTO urls (id, short_url, original_url, user_id)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (original_url) DO NOTHING
+		RETURNING id, short_url
+	`
 
 	tx, err := s.db.Begin()
 	if err != nil {
 		return nil, fmt.Errorf("could not begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback()
+			panic(p)
+		}
+	}()
 
 	for _, item := range items {
-		var id string
-		var returnedShortURL string
-
-		err := tx.QueryRow(query, item.CorrelationID, item.ShortURL, item.OriginalURL).Scan(&id, &returnedShortURL)
+		var id, returnedShortURL string
+		err := tx.QueryRow(query, item.CorrelationID, item.ShortURL, item.OriginalURL, userID).Scan(&id, &returnedShortURL)
 		if err != nil {
-			existingShortURL, fetchErr := s.getShortURLByOriginal(item.OriginalURL)
-			if fetchErr != nil {
-				return nil, fmt.Errorf("could not insert or fetch URL: %w", err)
+			if errors.Is(err, sql.ErrNoRows) {
+				existingShortURL, fetchErr := s.getShortURLByOriginal(item.OriginalURL)
+				if fetchErr != nil {
+					return nil, fmt.Errorf("could not fetch conflicting URL: %w", fetchErr)
+				}
+				// Append existing URL as part of response.
+				urlDataList = append(urlDataList, URLData{
+					UUID:        item.CorrelationID,
+					ShortURL:    existingShortURL,
+					OriginalURL: item.OriginalURL,
+				})
+				continue
 			}
-			return nil, &ErrURLExists{ExistingShortURL: existingShortURL, ID: item.CorrelationID}
+			return nil, fmt.Errorf("could not insert batch item: %w", err)
 		}
 
 		urlDataList = append(urlDataList, URLData{
-			UUID:        item.CorrelationID,
+			UUID:        id,
 			ShortURL:    returnedShortURL,
 			OriginalURL: item.OriginalURL,
 		})
@@ -109,6 +125,38 @@ func (s *PostgresStore) Get(shortURL string) (string, error) {
 	}
 
 	return originalURL, nil
+}
+
+func (s *PostgresStore) GetUserURLs(userID string) ([]models.UserURLs, error) {
+	var userURLs []models.UserURLs
+	query := `SELECT short_url, original_url FROM urls WHERE user_id = $1`
+
+	rows, err := s.db.Query(query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("could not fetch user URLs: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var key, originalURL string
+		if err := rows.Scan(&key, &originalURL); err != nil {
+			return nil, fmt.Errorf("could not scan row: %w", err)
+		}
+		shortURL, err := utils.ConstructURL(config.Config.BaseURL, key)
+		if err != nil {
+			return nil, fmt.Errorf("could not construct URL: %w", err)
+		}
+		userURLs = append(userURLs, models.UserURLs{
+			ShortURL:    shortURL,
+			OriginalURL: originalURL,
+		})
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return userURLs, nil
 }
 
 func (s *PostgresStore) LoadFromFile(_ string) error {

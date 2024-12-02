@@ -26,23 +26,23 @@ func TestPostgresStore_SaveBatch(t *testing.T) {
 	}
 
 	query := `
-			INSERT INTO urls (id, short_url, original_url)
-			VALUES ($1, $2, $3)
-			ON CONFLICT (original_url) DO NOTHING
-			RETURNING id, short_url
-	`
+        INSERT INTO urls (id, short_url, original_url, user_id)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (original_url) DO NOTHING
+        RETURNING id, short_url
+    `
 
 	mock.ExpectBegin()
 
 	for _, item := range items {
 		mock.ExpectQuery(regexp.QuoteMeta(query)).
-			WithArgs(item.CorrelationID, item.ShortURL, item.OriginalURL).
+			WithArgs(item.CorrelationID, item.ShortURL, item.OriginalURL, nil).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "short_url"}).AddRow(item.CorrelationID, item.ShortURL))
 	}
 
 	mock.ExpectCommit()
 
-	urlDataList, err := store.SaveBatch(items)
+	urlDataList, err := store.SaveBatch(items, nil)
 	assert.NoError(t, err, "Expected no error during SaveBatch")
 	assert.Len(t, urlDataList, len(items), "Expected urlDataList to have the same length as input items")
 
@@ -54,16 +54,16 @@ func TestPostgresStore_SaveBatch(t *testing.T) {
 
 	// Case: Transaction fails to begin
 	mock.ExpectBegin().WillReturnError(sql.ErrConnDone)
-	_, err = store.SaveBatch(items)
+	_, err = store.SaveBatch(items, nil)
 	assert.Error(t, err, "Expected error when transaction fails to begin")
 
 	// Case: Query fails
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta(query)).
-		WithArgs(items[0].CorrelationID, items[0].ShortURL, items[0].OriginalURL).
+		WithArgs(items[0].CorrelationID, items[0].ShortURL, items[0].OriginalURL, nil).
 		WillReturnError(sql.ErrNoRows)
 	mock.ExpectRollback()
 
-	_, err = store.SaveBatch(items)
+	_, err = store.SaveBatch(items, nil)
 	assert.Error(t, err, "Expected error when query fails")
 }

@@ -23,14 +23,16 @@ type URLData struct {
 	UUID        string `json:"uuid"`
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
+	UserID      string `json:"user_id"`
 }
 
 type UUID = string
 
 type Storage interface {
-	Save(shortURL, originalURL string) (UUID, error)
-	SaveBatch([]models.BatchItem) ([]URLData, error)
+	Save(shortURL, originalURL string, userID *string) (UUID, error)
+	SaveBatch(items []models.BatchItem, userID *string) ([]URLData, error)
 	Get(id string) (string, error)
+	GetUserURLs(userID string) ([]models.UserURLs, error)
 	LoadFromFile(filePath string) error
 	SaveToFile(filePath string) error
 }
@@ -58,20 +60,26 @@ func NewInMemoryStore() Storage {
 	return &InMemoryStore{data: make(map[string]URLData)}
 }
 
-func (s *InMemoryStore) Save(shortURL, originalURL string) (string, error) {
+func (s *InMemoryStore) Save(shortURL, originalURL string, userID *string) (string, error) {
 	id := uuid.New().String()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.data[shortURL] = URLData{
+	urlData := URLData{
 		UUID:        id,
 		ShortURL:    shortURL,
 		OriginalURL: originalURL,
 	}
+
+	if userID != nil {
+		urlData.UserID = *userID
+	}
+
+	s.data[shortURL] = urlData
 	return id, nil
 }
 
-func (s *InMemoryStore) SaveBatch(items []models.BatchItem) ([]URLData, error) {
+func (s *InMemoryStore) SaveBatch(items []models.BatchItem, userID *string) ([]URLData, error) {
 	var urlDataList []URLData
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -82,6 +90,11 @@ func (s *InMemoryStore) SaveBatch(items []models.BatchItem) ([]URLData, error) {
 			ShortURL:    item.ShortURL,
 			OriginalURL: item.OriginalURL,
 		}
+
+		if userID != nil {
+			urlData.UserID = *userID
+		}
+
 		urlDataList = append(urlDataList, urlData)
 		s.data[item.ShortURL] = urlData
 	}
@@ -97,6 +110,22 @@ func (s *InMemoryStore) Get(shortURL string) (string, error) {
 		return "", errors.New("url not found")
 	}
 	return urlData.OriginalURL, nil
+}
+
+func (s *InMemoryStore) GetUserURLs(userID string) ([]models.UserURLs, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var userURLs []models.UserURLs
+	for _, urlData := range s.data {
+		if urlData.UserID == userID {
+			userURLs = append(userURLs, models.UserURLs{
+				ShortURL:    urlData.ShortURL,
+				OriginalURL: urlData.OriginalURL,
+			})
+		}
+	}
+	return userURLs, nil
 }
 
 func (s *InMemoryStore) LoadFromFile(filePath string) error {
