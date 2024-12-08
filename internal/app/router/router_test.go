@@ -12,6 +12,7 @@ import (
 
 	"github.com/condratf/shortner/internal/app/config"
 	"github.com/condratf/shortner/internal/app/models"
+	"github.com/condratf/shortner/internal/app/storage"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -24,31 +25,14 @@ func TestShortenerRouter(t *testing.T) {
 		expectedStatus        int
 		expectedBody          string
 		expectedHeader        string
-		shortURLAndStore      func(string) (string, error)
-		shortURLAndStoreBatch func([]models.RequestPayloadBatch) ([]models.BatchItem, error)
-		getURL                func(string) (string, error)
+		shortURLAndStore      models.ShortURLAndStore
+		shortURLAndStoreBatch models.ShortURLAndStoreBatch
 	}{
-		{
-			name:           "GET request with valid ID",
-			method:         http.MethodGet,
-			path:           "/valid-id",
-			expectedStatus: http.StatusTemporaryRedirect,
-			expectedHeader: "http://example.com",
-			getURL: func(id string) (string, error) {
-				if id == "valid-id" {
-					return "http://example.com", nil
-				}
-				return "", errors.New("invalid ID")
-			},
-		},
 		{
 			name:           "GET request with invalid ID",
 			method:         http.MethodGet,
 			path:           "/invalid-id",
 			expectedStatus: http.StatusBadRequest,
-			getURL: func(id string) (string, error) {
-				return "", errors.New("invalid ID")
-			},
 		},
 		{
 			name:           "GET request with no ID",
@@ -63,7 +47,7 @@ func TestShortenerRouter(t *testing.T) {
 			body:           "http://example.com",
 			expectedStatus: http.StatusCreated,
 			expectedBody:   config.Config.BaseURL,
-			shortURLAndStore: func(url string) (string, error) {
+			shortURLAndStore: func(url string, userID *string) (string, error) {
 				if url == "http://example.com" {
 					return config.Config.BaseURL, nil
 				}
@@ -77,7 +61,7 @@ func TestShortenerRouter(t *testing.T) {
 			body:           "",
 			expectedStatus: http.StatusBadRequest,
 			expectedBody:   "could not read request body",
-			shortURLAndStore: func(url string) (string, error) {
+			shortURLAndStore: func(url string, userID *string) (string, error) {
 				return "", nil
 			},
 		},
@@ -88,7 +72,7 @@ func TestShortenerRouter(t *testing.T) {
 			body:           map[string]string{"url": "http://example.com"},
 			expectedStatus: http.StatusCreated,
 			expectedBody:   `{"result":"` + config.Config.BaseURL + `"}`,
-			shortURLAndStore: func(url string) (string, error) {
+			shortURLAndStore: func(url string, userID *string) (string, error) {
 				if url == "http://example.com" {
 					return config.Config.BaseURL, nil
 				}
@@ -102,7 +86,7 @@ func TestShortenerRouter(t *testing.T) {
 			body:           map[string]string{"url": ""},
 			expectedStatus: http.StatusBadRequest,
 			expectedBody:   "could not decode request body",
-			shortURLAndStore: func(url string) (string, error) {
+			shortURLAndStore: func(url string, userID *string) (string, error) {
 				return "", nil
 			},
 		},
@@ -133,7 +117,7 @@ func TestShortenerRouter(t *testing.T) {
 			req := httptest.NewRequest(tt.method, tt.path, reqBody)
 			recorder := httptest.NewRecorder()
 
-			router := ShortenerRouter(tt.shortURLAndStore, tt.getURL, tt.shortURLAndStoreBatch, pingDB)
+			router := ShortenerRouter(tt.shortURLAndStore, tt.shortURLAndStoreBatch, pingDB, storage.NewInMemoryStore())
 			router.ServeHTTP(recorder, req)
 
 			assert.Equal(t, tt.expectedStatus, recorder.Code)

@@ -3,12 +3,15 @@ package router
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 
 	"github.com/condratf/shortner/internal/app/errorhandler"
 	"github.com/condratf/shortner/internal/app/models"
+	"github.com/condratf/shortner/internal/app/storage"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -20,7 +23,7 @@ type responsePayload struct {
 	Result string `json:"result"`
 }
 
-func createShortURLHandlerAPIShorten(shortURLAndStore func(string) (string, error)) func(w http.ResponseWriter, r *http.Request) {
+func createShortURLHandlerAPIShorten(shortURLAndStore models.ShortURLAndStore) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req requestPayload
 		err := json.NewDecoder(r.Body).Decode(&req)
@@ -31,7 +34,13 @@ func createShortURLHandlerAPIShorten(shortURLAndStore func(string) (string, erro
 
 		defer r.Body.Close()
 
-		shortURL, err := shortURLAndStore(req.URL)
+		userID, err := getUserIDFromCookie(r)
+		if err != nil {
+			// http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			log.Println("no user id")
+		}
+
+		shortURL, err := shortURLAndStore(req.URL, userID)
 		if err != nil {
 			if errorhandler.HandleURLExistError(w, err, "json") {
 				return
@@ -50,7 +59,7 @@ func createShortURLHandlerAPIShorten(shortURLAndStore func(string) (string, erro
 }
 
 func createShortURLHandlerAPIShortenBatch(
-	shortURLAndStoreBatch func([]models.RequestPayloadBatch) ([]models.BatchItem, error),
+	shortURLAndStoreBatch models.ShortURLAndStoreBatch,
 ) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req []models.RequestPayloadBatch
@@ -60,8 +69,15 @@ func createShortURLHandlerAPIShortenBatch(
 		}
 		defer r.Body.Close()
 
-		batchData, err := shortURLAndStoreBatch(req)
+		userID, err := getUserIDFromCookie(r)
 		if err != nil {
+			// http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			log.Println("no user id")
+		}
+
+		batchData, err := shortURLAndStoreBatch(req, userID)
+		if err != nil {
+			fmt.Println(err)
 			if errorhandler.HandleURLExistError(w, err, "json-batch") {
 				return
 			}
@@ -85,7 +101,7 @@ func createShortURLHandlerAPIShortenBatch(
 	}
 }
 
-func createShortURLHandler(shortURLAndStore func(string) (string, error)) func(w http.ResponseWriter, r *http.Request) {
+func createShortURLHandler(shortURLAndStore models.ShortURLAndStore) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		url, err := io.ReadAll(r.Body)
 		defer r.Body.Close()
@@ -95,8 +111,15 @@ func createShortURLHandler(shortURLAndStore func(string) (string, error)) func(w
 			return
 		}
 
-		shortURL, err := shortURLAndStore(string(url))
+		userID, err := getUserIDFromCookie(r)
 		if err != nil {
+			// http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			log.Println("no user id")
+		}
+
+		shortURL, err := shortURLAndStore(string(url), userID)
+		if err != nil {
+			log.Println(err)
 			if errorhandler.HandleURLExistError(w, err, "text") {
 				return
 			}
@@ -110,7 +133,7 @@ func createShortURLHandler(shortURLAndStore func(string) (string, error)) func(w
 	}
 }
 
-func redirectHandler(getURL func(string) (string, error)) func(w http.ResponseWriter, r *http.Request) {
+func redirectHandler(store storage.Storage) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 
@@ -119,8 +142,13 @@ func redirectHandler(getURL func(string) (string, error)) func(w http.ResponseWr
 			return
 		}
 
-		url, err := getURL(id)
+		url, err := store.Get(id)
+
 		if err != nil {
+			if err.Error() == "url is deleted" {
+				w.WriteHeader(http.StatusGone)
+				return
+			}
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -142,5 +170,63 @@ func createPingHandler(pingDB func(ctx context.Context) error) func(w http.Respo
 		}
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
+	}
+}
+
+func getUserURLsHandler(store storage.Storage) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := getUserIDFromCookie(r)
+		if err != nil || userID == nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		urls, err := store.GetUserURLs(*userID)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		//return 401 if no urls
+		if len(urls) == 0 {
+			http.Error(w, "No URLs found", http.StatusUnauthorized)
+			return
+		}
+
+		if len(urls) == 0 {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(urls)
+	}
+}
+
+func deleteURLHandler(store storage.Storage) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := getUserIDFromCookie(r)
+		if err != nil || userID == nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		var ids []string
+		err = json.NewDecoder(r.Body).Decode(&ids)
+		defer r.Body.Close()
+
+		if err != nil || len(ids) == 0 {
+			http.Error(w, "could not read request body", http.StatusBadRequest)
+			return
+		}
+
+		w.WriteHeader(http.StatusAccepted)
+
+		go func() {
+			err = store.DeleteURLs(ids, *userID)
+			if err != nil {
+				log.Printf("could not delete URL: %v", err)
+			}
+		}()
 	}
 }
