@@ -27,29 +27,12 @@ func TestShortenerRouter(t *testing.T) {
 		expectedHeader        string
 		shortURLAndStore      models.ShortURLAndStore
 		shortURLAndStoreBatch models.ShortURLAndStoreBatch
-		getURL                func(string) (string, error)
 	}{
-		{
-			name:           "GET request with valid ID",
-			method:         http.MethodGet,
-			path:           "/valid-id",
-			expectedStatus: http.StatusTemporaryRedirect,
-			expectedHeader: "http://example.com",
-			getURL: func(id string) (string, error) {
-				if id == "valid-id" {
-					return "http://example.com", nil
-				}
-				return "", errors.New("invalid ID")
-			},
-		},
 		{
 			name:           "GET request with invalid ID",
 			method:         http.MethodGet,
 			path:           "/invalid-id",
 			expectedStatus: http.StatusBadRequest,
-			getURL: func(id string) (string, error) {
-				return "", errors.New("invalid ID")
-			},
 		},
 		{
 			name:           "GET request with no ID",
@@ -134,7 +117,7 @@ func TestShortenerRouter(t *testing.T) {
 			req := httptest.NewRequest(tt.method, tt.path, reqBody)
 			recorder := httptest.NewRecorder()
 
-			router := ShortenerRouter(tt.shortURLAndStore, tt.shortURLAndStoreBatch, tt.getURL, pingDB, storage.NewInMemoryStore())
+			router := ShortenerRouter(tt.shortURLAndStore, tt.shortURLAndStoreBatch, pingDB, storage.NewInMemoryStore())
 			router.ServeHTTP(recorder, req)
 
 			assert.Equal(t, tt.expectedStatus, recorder.Code)

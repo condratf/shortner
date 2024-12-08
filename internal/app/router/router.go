@@ -12,7 +12,6 @@ import (
 func ShortenerRouter(
 	shortURLAndStore models.ShortURLAndStore,
 	shortURLAndStoreBatch models.ShortURLAndStoreBatch,
-	getURL func(string) (string, error),
 	pingDB func(ctx context.Context) error,
 	store storage.Storage,
 ) http.Handler {
@@ -23,7 +22,7 @@ func ShortenerRouter(
 
 	r.Get("/ping", createPingHandler(pingDB))
 	r.Get("/api/user/urls", getUserURLsHandler(store))
-	r.Get("/{id}", redirectHandler(getURL))
+	r.Get("/{id}", redirectHandler(store))
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	})
@@ -31,6 +30,8 @@ func ShortenerRouter(
 	r.Post("/", createShortURLHandler(shortURLAndStore))
 	r.Post("/api/shorten", createShortURLHandlerAPIShorten(shortURLAndStore))
 	r.Post("/api/shorten/batch", createShortURLHandlerAPIShortenBatch(shortURLAndStoreBatch))
+
+	r.Delete("/api/user/urls", deleteURLHandler(store))
 
 	return r
 }

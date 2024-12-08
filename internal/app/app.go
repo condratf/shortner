@@ -32,7 +32,6 @@ func Server() error {
 	shortenerRouter := router.ShortenerRouter(
 		shortURLAndStore(short, store),
 		shortURLAndStoreBatch(short, store),
-		getURL(store),
 		db.PingDB,
 		store,
 	)

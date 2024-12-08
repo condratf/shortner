@@ -9,7 +9,7 @@ import (
 	"github.com/condratf/shortner/internal/app/models"
 	"github.com/condratf/shortner/internal/app/utils"
 	"github.com/google/uuid"
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 type PostgresStore struct {
@@ -24,6 +24,7 @@ func NewPostgresStore(db *sql.DB) (Storage, error) {
 			id UUID PRIMARY KEY,
 			short_url TEXT UNIQUE NOT NULL,
 			original_url TEXT UNIQUE NOT NULL,
+			deleted_flag BOOLEAN DEFAULT FALSE,
 			user_id UUID
 		)
 	`
@@ -114,14 +115,19 @@ func (s *PostgresStore) SaveBatch(items []models.BatchItem, userID *string) ([]U
 
 func (s *PostgresStore) Get(shortURL string) (string, error) {
 	var originalURL string
-	query := `SELECT original_url FROM urls WHERE short_url = $1`
+	var deletedFlag bool
+	query := `SELECT original_url, deleted_flag FROM urls WHERE short_url = $1`
 
-	err := s.db.QueryRow(query, shortURL).Scan(&originalURL)
+	err := s.db.QueryRow(query, shortURL).Scan(&originalURL, &deletedFlag)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", errors.New("url not found")
 		}
 		return "", fmt.Errorf("could not get url: %w", err)
+	}
+
+	if deletedFlag {
+		return "", errors.New("url is deleted")
 	}
 
 	return originalURL, nil
@@ -177,4 +183,15 @@ func (s *PostgresStore) getShortURLByOriginal(originalURL string) (string, error
 		return "", fmt.Errorf("could not fetch short URL by original URL: %w", err)
 	}
 	return shortURL, nil
+}
+
+func (s *PostgresStore) DeleteURLs(shortURLs []string, userID string) error {
+	query := `UPDATE urls SET deleted_flag = true WHERE short_url = ANY($1) AND user_id = $2`
+
+	_, err := s.db.Exec(query, pq.Array(shortURLs), userID)
+	if err != nil {
+		return fmt.Errorf("could not update URLs: %w", err)
+	}
+
+	return nil
 }

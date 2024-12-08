@@ -20,10 +20,11 @@ const (
 )
 
 type URLData struct {
-	UUID        string `json:"uuid"`
-	ShortURL    string `json:"short_url"`
-	OriginalURL string `json:"original_url"`
-	UserID      string `json:"user_id"`
+	UUID        string `json:"uuid" db:"user_id"`
+	ShortURL    string `json:"short_url" db:"short_url"`
+	OriginalURL string `json:"original_url" db:"original_url"`
+	UserID      string `json:"user_id" db:"user_id"`
+	DeletedFlag bool   `json:"deleted_flag" db:"deleted_flag"`
 }
 
 type UUID = string
@@ -35,6 +36,7 @@ type Storage interface {
 	GetUserURLs(userID string) ([]models.UserURLs, error)
 	LoadFromFile(filePath string) error
 	SaveToFile(filePath string) error
+	DeleteURLs(shortURLs []string, userID string) error
 }
 
 type InMemoryStore struct {
@@ -108,6 +110,9 @@ func (s *InMemoryStore) Get(shortURL string) (string, error) {
 	urlData, ok := s.data[shortURL]
 	if !ok {
 		return "", errors.New("url not found")
+	}
+	if urlData.DeletedFlag {
+		return "", errors.New("url is deleted")
 	}
 	return urlData.OriginalURL, nil
 }
@@ -184,5 +189,27 @@ func (s *InMemoryStore) SaveToFile(filePath string) error {
 		return err
 	}
 
+	return nil
+}
+
+func (s *InMemoryStore) DeleteURLs(shortURLs []string, userID string) error {
+	var wg sync.WaitGroup
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, shortURL := range shortURLs {
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			if urlData, exists := s.data[id]; exists && urlData.UserID == userID {
+				urlData.DeletedFlag = true
+				s.data[id] = urlData
+			}
+		}(shortURL)
+	}
+
+	wg.Wait()
 	return nil
 }

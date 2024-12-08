@@ -133,7 +133,7 @@ func createShortURLHandler(shortURLAndStore models.ShortURLAndStore) func(w http
 	}
 }
 
-func redirectHandler(getURL func(string) (string, error)) func(w http.ResponseWriter, r *http.Request) {
+func redirectHandler(store storage.Storage) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
 
@@ -142,8 +142,13 @@ func redirectHandler(getURL func(string) (string, error)) func(w http.ResponseWr
 			return
 		}
 
-		url, err := getURL(id)
+		url, err := store.Get(id)
+
 		if err != nil {
+			if err.Error() == "url is deleted" {
+				w.WriteHeader(http.StatusGone)
+				return
+			}
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -195,5 +200,33 @@ func getUserURLsHandler(store storage.Storage) func(w http.ResponseWriter, r *ht
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(urls)
+	}
+}
+
+func deleteURLHandler(store storage.Storage) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := getUserIDFromCookie(r)
+		if err != nil || userID == nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		var ids []string
+		err = json.NewDecoder(r.Body).Decode(&ids)
+		defer r.Body.Close()
+
+		if err != nil || len(ids) == 0 {
+			http.Error(w, "could not read request body", http.StatusBadRequest)
+			return
+		}
+
+		w.WriteHeader(http.StatusAccepted)
+
+		go func() {
+			err = store.DeleteURLs(ids, *userID)
+			if err != nil {
+				log.Printf("could not delete URL: %v", err)
+			}
+		}()
 	}
 }
